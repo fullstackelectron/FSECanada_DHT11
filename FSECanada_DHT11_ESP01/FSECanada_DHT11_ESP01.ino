@@ -34,7 +34,14 @@ WiFiManagerParameter custom_iot_server_url("iot_server_url", "Iot Server URL", "
 WiFiManagerParameter custom_iot_apikey_write("iot_apikey_write", "iot Apikey write", "YOUR API KEY", 40);
 WiFiManagerParameter custom_device_name("device_name", "Device Name", "ESP01-DHT11 Module", 40);
 
+extern "C" {
+  #include "user_interface.h"
+  }
 
+extern "C" {
+   #include "gpio.h"
+ }
+ 
 typedef struct {
   char minutes_deep_sleep[500];
   char iot_url[500];
@@ -111,12 +118,20 @@ void resetFactory() {
   wifiManager.resetSettings(); // cleaning wifi stored settings
 }
 
+void initWifi() {
+  if(!wifiManager.autoConnect(NETWORK)) {
+      Serial.println("failed to connect and hit timeout");
+      delay(3000);
+  }
+  settingsRead();
+}
+
 void setup() {
   /* 
    * Uncomment the line below to reset the WIFI configuation 
    * This is required if you have a new WIFI configution
    */
-  resetFactory();
+  //resetFactory();
   Serial.begin(115200);
   Serial.println("DHT TEST PROGRAM");
   Serial.print("LIBRARY VERSION: ");
@@ -124,18 +139,16 @@ void setup() {
   Serial.println();
   Serial.println("Type,\tstatus,\tHumidity (%),\tTemperature (C)");
   SPIFFS.begin();
+  gpio_init(); // Initilise GPIO pins
   wifiManager.setSaveConfigCallback(saveConfigCallback);
   wifiManager.addParameter(&custom_iot_server_url);
   wifiManager.addParameter(&custom_iot_apikey_write);
   wifiManager.addParameter(&custom_device_name);
   wifiManager.setConfigPortalTimeout(120);
-  
-  if(!wifiManager.autoConnect(NETWORK)) {
-      Serial.println("failed to connect and hit timeout");
-      delay(3000);
-  }
-  settingsRead();
+  initWifi();  
+  WiFi.mode(WIFI_STA); // change wifi mode to use less power
 }
+
 
 String getUrl(float temp, float hum) {
   String url = "/update?api_key=";
@@ -177,8 +190,10 @@ void sendData(float temp, float hum) {
       https.end();
   }
 }
-
+ 
 void loop() {
+  WiFi.forceSleepWake();
+  initWifi();
   // READ DATA
   Serial.print("DHT11, \t");
   int chk = DHT.read11(DHT11_PIN);
@@ -203,6 +218,6 @@ void loop() {
   Serial.println(DHT.temperature, 1);
 
   sendData(DHT.temperature, DHT.humidity);
-  
-  delay(10000);
+  WiFi.forceSleepBegin();
+  delay(60000);
 }
